@@ -22,13 +22,13 @@ export interface Config {
 }
 
 export const Config: Schema<Config> = Schema.object({
-  cachePath: Schema.string().default('cache/audiomeme').description('Cache directory for audio files.'),
-  cleanupInterval: Schema.number().default(10 * 60 * 1000).description('Cleanup interval in milliseconds (default 10 minutes).'),
-  cacheMaxAge: Schema.number().default(60 * 60 * 1000).description('Maximum age for cached files in milliseconds (default 1 hour).'),
-  pageSize: Schema.number().min(5).max(50).default(20).description('Number of meme sounds shown per list page.'),
-  downloadTimeout: Schema.number().min(1000).default(30 * 1000).description('Download timeout in milliseconds.'),
-  enableAudioMemeXmlTool: Schema.boolean().default(false).description('Enable XML audio meme tool calls from ChatLuna replies.'),
-  injectAudioMemeXmlToolAsReplyTool: Schema.boolean().default(false).description('Inject the XML tool as an experimental ChatLuna reply tool field.'),
+  cachePath: Schema.string().default('cache/audiomeme').description('音频文件缓存目录。'),
+  cleanupInterval: Schema.number().default(10 * 60 * 1000).description('缓存清理间隔，单位为毫秒，默认 10 分钟。'),
+  cacheMaxAge: Schema.number().default(60 * 60 * 1000).description('缓存文件最长保留时间，单位为毫秒，默认 1 小时。'),
+  pageSize: Schema.number().min(5).max(50).default(20).description('列表每页显示的音效数量。'),
+  downloadTimeout: Schema.number().min(1000).default(30 * 1000).description('音频下载超时时间，单位为毫秒。'),
+  enableAudioMemeXmlTool: Schema.boolean().default(false).description('是否启用 ChatLuna 回复中的 XML 音效工具调用。'),
+  injectAudioMemeXmlToolAsReplyTool: Schema.boolean().default(false).description('是否将 XML 音效工具注入实验性“工具调用回复”参数中。'),
 })
 
 interface MemeSound {
@@ -43,28 +43,51 @@ function matchSounds(sounds: MemeSound[], keyword?: string) {
   return sounds.filter(sound => sound.name.toLowerCase().includes(normalizedKeyword))
 }
 
+function parseListArgs(input?: string) {
+  const normalizedInput = (input || '').trim()
+  if (!normalizedInput) return { page: 1, keyword: undefined as string | undefined }
+
+  const [first, ...rest] = normalizedInput.split(/\s+/)
+  const page = Number(first)
+  if (Number.isInteger(page) && page > 0) {
+    return {
+      page,
+      keyword: rest.join(' ') || undefined,
+    }
+  }
+
+  return {
+    page: 1,
+    keyword: normalizedInput,
+  }
+}
+
+function pickRandomSound(sounds: MemeSound[]) {
+  return sounds[Math.floor(Math.random() * sounds.length)]
+}
+
 function formatSoundList(sounds: MemeSound[], page: number, pageSize: number, keyword?: string) {
   const totalPages = Math.max(1, Math.ceil(sounds.length / pageSize))
   const currentPage = Math.min(Math.max(page, 1), totalPages)
   const start = (currentPage - 1) * pageSize
   const pageSounds = sounds.slice(start, start + pageSize)
   const title = keyword
-    ? `Meme sounds matching "${keyword}" (${sounds.length})`
-    : `Meme sounds (${sounds.length})`
+    ? `匹配 "${keyword}" 的音效 (${sounds.length})`
+    : `可用音效 (${sounds.length})`
 
   if (!sounds.length) {
-    return `No meme sounds found for "${keyword}".`
+    return `没有找到匹配 "${keyword}" 的音效。`
   }
 
   return [
-    `${title} - page ${currentPage}/${totalPages}`,
+    `${title} - 第 ${currentPage}/${totalPages} 页`,
     ...pageSounds.map((sound, index) => `${String(start + index + 1).padStart(3, ' ')}. ${sound.name}`),
     '',
-    `Play: memeaudio <name>`,
-    `Search: memeaudio.list <keyword>`,
+    `播放：audiomeme <音效名>`,
+    `搜索：audiomeme list <关键词>`,
     currentPage < totalPages
-      ? `Next: memeaudio.list ${currentPage + 1}${keyword ? ` ${keyword}` : ''}`
-      : 'End of results.',
+      ? `下一页：audiomeme list ${currentPage + 1}${keyword ? ` ${keyword}` : ''}`
+      : '已经是最后一页。',
   ].join('\n')
 }
 
@@ -82,8 +105,8 @@ export function apply(ctx: Context, config: Config) {
     if (!sound) {
       const suggestions = matchSounds(sounds, name).slice(0, 5).map(s => s.name)
       return suggestions.length
-        ? [`Meme sound not found: ${name}`, 'Maybe you meant:', ...suggestions.map(s => `- ${s}`)].join('\n')
-        : `Meme sound not found: ${name}`
+        ? [`未找到音效：${name}`, '你可能想找：', ...suggestions.map(s => `- ${s}`)].join('\n')
+        : `未找到音效：${name}`
     }
 
     const fileName = `${encodeURIComponent(sound.name)}.mp3`
@@ -102,25 +125,48 @@ export function apply(ctx: Context, config: Config) {
       return h.audio(pathToFileURL(filePath).href)
     } catch (error) {
       logger.error(error)
-      return 'Failed to download or play meme sound.'
+      return '下载或播放音效失败。'
     }
   }
 
-  ctx.command('memeaudio <name:string>', 'Play a meme sound')
-    .action(async ({ session }, name) => {
-      if (!name) return formatSoundList(sounds, 1, config.pageSize)
+  const playRandomSound = async () => {
+    const sound = pickRandomSound(sounds)
+    if (!sound) return '当前没有可用音效。'
+    return playSound(sound.name)
+  }
 
-      return playSound(name)
+  const listSounds = (input?: string) => {
+    const { page, keyword } = parseListArgs(input)
+    const matchedSounds = matchSounds(sounds, keyword)
+
+    return formatSoundList(matchedSounds, page, config.pageSize, keyword)
+  }
+
+  ctx.command('audiomeme [action:text]', '播放或查看音效 meme')
+    .alias('memeaudio')
+    .action(async ({ session }, action) => {
+      const normalizedAction = (action || '').trim()
+      if (!normalizedAction) return listSounds()
+
+      const [command, ...rest] = normalizedAction.split(/\s+/)
+      const commandArgs = rest.join(' ')
+
+      if (command === 'list') return listSounds(commandArgs)
+      if (command === 'random') return playRandomSound()
+
+      return playSound(normalizedAction)
     })
 
-  ctx.command('memeaudio.list [pageOrKeyword:string] [keyword:text]', 'List meme sounds')
-    .action(({ session }, pageOrKeyword, keyword) => {
-      const page = Number(pageOrKeyword)
-      const hasPage = Number.isInteger(page) && page > 0
-      const searchKeyword = hasPage ? keyword : [pageOrKeyword, keyword].filter(Boolean).join(' ')
-      const matchedSounds = matchSounds(sounds, searchKeyword)
+  ctx.command('audiomeme.list [query:text]', '查看音效 meme 列表')
+    .alias('memeaudio.list')
+    .action(({ session }, query) => {
+      return listSounds(query)
+    })
 
-      return formatSoundList(matchedSounds, hasPage ? page : 1, config.pageSize, searchKeyword)
+  ctx.command('audiomeme.random', '随机播放音效 meme')
+    .alias('memeaudio.random')
+    .action(async () => {
+      return playRandomSound()
     })
 
   installChatlunaAudioMemeTools({

@@ -1,30 +1,33 @@
 # koishi-plugin-audiomeme
 
-Play meme sounds from a bundled JSON database.
+播放内置 JSON 数据库中的 meme 音效，并支持 ChatLuna 工具调用。
 
 ## Usage
 
 ```text
-memeaudio
-memeaudio <name>
-memeaudio.list [page]
-memeaudio.list [keyword]
-memeaudio.list [page] [keyword]
+audiomeme
+audiomeme <音效名>
+audiomeme list [页码]
+audiomeme list [关键词]
+audiomeme list [页码] [关键词]
+audiomeme random
 ```
 
-- `memeaudio` shows the first page of available sounds.
-- `memeaudio <name>` downloads and plays a sound.
-- `memeaudio.list` shows a paginated list without a wide table.
-- `memeaudio.list cat` searches by sound name.
+- `audiomeme` 显示第一页可用音效。
+- `audiomeme <音效名>` 下载并播放指定音效。
+- `audiomeme list` 显示分页列表。
+- `audiomeme list cat` 按音效名搜索。
+- `audiomeme random` 随机播放一个音效。
+- 兼容旧命令：`memeaudio`、`memeaudio.list`、`memeaudio.random`。
 
 ## ChatLuna Tool Calls
 
-This plugin can optionally integrate with `chatluna_character`.
+本插件可以选择接入 `chatluna_character`。
 
-- `enableAudioMemeXmlTool`: enables XML audio meme tool calls in ChatLuna replies.
-- `injectAudioMemeXmlToolAsReplyTool`: injects the same XML tool as an experimental reply tool field. When this is available, direct XML action execution is disabled to avoid double playback.
+- `enableAudioMemeXmlTool`：启用 ChatLuna 回复中的 XML 音效工具调用。
+- `injectAudioMemeXmlToolAsReplyTool`：将同一个 XML 音效工具注入实验性“工具调用回复”参数中；可用时会关闭直接 XML 动作执行，避免重复播放。
 
-XML examples:
+XML 示例：
 
 ```xml
 <audiomeme name="bruh" />
@@ -32,13 +35,13 @@ XML examples:
 <audio-meme key="cat-laugh-meme-1" />
 ```
 
-Reply tool field name:
+Reply tool 字段名：
 
 ```text
 audiomeme_play
 ```
 
-Reply tool payload example:
+Reply tool 参数示例：
 
 ```json
 [{ "name": "bruh" }]
