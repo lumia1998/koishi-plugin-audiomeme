@@ -20,6 +20,12 @@ audiomeme random
 - `audiomeme random` 随机播放一个音效。
 - 兼容旧命令：`memeaudio`、`memeaudio.list`、`memeaudio.random`。
 
+## Audio Sending
+
+默认使用“远程链接”模式发送音效，适合 OneBot 等适配器，避免本地 `file://` 缓存路径在机器人端不可见导致 0 秒语音。
+
+如需让 Koishi 先下载音频再发送本地文件，可以在配置中把“音效发送模式”改为“缓存文件”。缓存模式会校验已下载文件，发现空文件、HTML 错误页或无效音频时会自动重新下载。
+
 ## ChatLuna Tool Calls
 
 本插件可以选择接入 `chatluna_character`。
