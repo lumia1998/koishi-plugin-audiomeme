@@ -1,0 +1,36 @@
+{
+  "name": "koishi-plugin-audiomeme",
+  "description": "Play meme sounds from a JSON database with cache cleanup.",
+  "version": "1.2.0",
+  "main": "lib/index.js",
+  "typings": "lib/index.d.ts",
+  "files": [
+    "lib",
+    "dist",
+    "meme_sounds.json"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "fs-extra": "^11.1.1"
+  },
+  "devDependencies": {
+    "koishi": "^4.15.0",
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "@types/fs-extra": "^11.0.0"
+  },
+  "peerDependencies": {
+    "koishi": "^4.15.0"
+  },
+  "koishi": {
+    "service": {
+      "optional": [
+        "chatluna_character"
+      ]
+    }
+  }
+}

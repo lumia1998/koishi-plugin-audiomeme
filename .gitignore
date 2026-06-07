@@ -1,0 +1,7 @@
+node_modules
+lib
+dist
+cache
+*.log
+.DS_Store
+meme_sounds_bak.json
