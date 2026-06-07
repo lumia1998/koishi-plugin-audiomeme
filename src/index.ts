@@ -2,7 +2,6 @@ import { Context, Schema, h } from 'koishi'
 import axios from 'axios'
 import path from 'path'
 import fs from 'fs-extra'
-import { pathToFileURL } from 'url'
 import { installChatlunaAudioMemeTools, type AudioMemeToolCall } from './chatluna'
 
 export const name = 'audiomeme'
@@ -30,7 +29,7 @@ export const Config: Schema<Config> = Schema.object({
   downloadTimeout: Schema.number().min(1000).default(30 * 1000).description('音频下载超时时间，单位为毫秒。'),
   sendMode: Schema.union([
     Schema.const('remote').description('远程链接：直接把音频 URL 交给平台发送，推荐 OneBot 使用。'),
-    Schema.const('cache').description('缓存文件：下载到 Koishi 缓存目录后以本地文件发送。'),
+    Schema.const('cache').description('缓存发送：下载到 Koishi 缓存目录后读取为音频数据发送。'),
   ]).role('radio').default('cache').description('音效发送模式。'),
   enableAudioMemeXmlTool: Schema.boolean().default(false).description('是否启用 ChatLuna 回复中的 XML 音效工具调用。'),
   injectAudioMemeXmlToolAsReplyTool: Schema.boolean().default(false).description('是否将 XML 音效工具注入实验性“工具调用回复”参数中。'),
@@ -189,7 +188,8 @@ export function apply(ctx: Context, config: Config) {
       }
 
       lastAccess.set(fileName, Date.now())
-      return h.audio(pathToFileURL(filePath).href)
+      const buffer = await fs.readFile(filePath)
+      return h.audio(buffer, 'audio/mpeg')
     } catch (error) {
       await fs.unlink(tempFilePath).catch(() => {})
       logger.error(error)
