@@ -31,7 +31,7 @@ export const Config: Schema<Config> = Schema.object({
   sendMode: Schema.union([
     Schema.const('remote').description('远程链接：直接把音频 URL 交给平台发送，推荐 OneBot 使用。'),
     Schema.const('cache').description('缓存文件：下载到 Koishi 缓存目录后以本地文件发送。'),
-  ]).role('radio').default('remote').description('音效发送模式。'),
+  ]).role('radio').default('cache').description('音效发送模式。'),
   enableAudioMemeXmlTool: Schema.boolean().default(false).description('是否启用 ChatLuna 回复中的 XML 音效工具调用。'),
   injectAudioMemeXmlToolAsReplyTool: Schema.boolean().default(false).description('是否将 XML 音效工具注入实验性“工具调用回复”参数中。'),
 })
