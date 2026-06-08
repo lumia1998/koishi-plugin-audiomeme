@@ -14,7 +14,6 @@ export interface Config {
   cachePath: string
   cleanupInterval: number
   cacheMaxAge: number
-  pageSize: number
   downloadTimeout: number
   sendMode: 'remote' | 'cache'
   enableChatLunaTool: boolean
@@ -26,7 +25,6 @@ export const Config: Schema<Config> = Schema.object({
   cachePath: Schema.string().default('cache/audiomeme').description('音频文件缓存目录。'),
   cleanupInterval: Schema.number().default(10 * 60 * 1000).description('缓存清理间隔，单位为毫秒，默认 10 分钟。'),
   cacheMaxAge: Schema.number().default(60 * 60 * 1000).description('缓存文件最长保留时间，单位为毫秒，默认 1 小时。'),
-  pageSize: Schema.number().min(5).max(100).default(100).description('列表图片每页显示的音效数量，最多 100 个。'),
   downloadTimeout: Schema.number().min(1000).default(30 * 1000).description('音频下载超时时间，单位为毫秒。'),
   sendMode: Schema.union([
     Schema.const('remote').description('远程链接：直接把音频 URL 交给平台发送，推荐 OneBot 使用。'),
@@ -38,18 +36,13 @@ export const Config: Schema<Config> = Schema.object({
 interface MemeSound extends AudioMemeSound {}
 
 interface ListArgs {
-  page: number
   keyword?: string
-  explicitPage: boolean
 }
 
 interface SoundListPage {
   title: string
   keyword?: string
   totalSounds: number
-  totalPages: number
-  currentPage: number
-  start: number
   sounds: MemeSound[]
 }
 
@@ -59,7 +52,6 @@ interface ContextWithOptionalPuppeteer extends Context {
   }
 }
 
-const MAX_LIST_PAGE_SIZE = 100
 const MIN_AUDIO_FILE_SIZE = 1024
 
 function matchSounds(sounds: MemeSound[], keyword?: string) {
@@ -71,28 +63,9 @@ function matchSounds(sounds: MemeSound[], keyword?: string) {
 
 function parseListArgs(input?: string): ListArgs {
   const normalizedInput = (input || '').trim()
-  if (!normalizedInput) return { page: 1, keyword: undefined, explicitPage: false }
-
-  const [first, ...rest] = normalizedInput.split(/\s+/)
-  const page = Number(first)
-  if (Number.isInteger(page) && page > 0) {
-    return {
-      page,
-      keyword: rest.join(' ') || undefined,
-      explicitPage: true,
-    }
-  }
-
   return {
-    page: 1,
-    keyword: normalizedInput,
-    explicitPage: false,
+    keyword: normalizedInput || undefined,
   }
-}
-
-function normalizePageSize(pageSize: number) {
-  if (!Number.isFinite(pageSize)) return MAX_LIST_PAGE_SIZE
-  return Math.min(MAX_LIST_PAGE_SIZE, Math.max(1, Math.floor(pageSize)))
 }
 
 function pickRandomSound(sounds: MemeSound[]) {
@@ -144,11 +117,7 @@ function assertAudioResponse(contentType: string | undefined, data: Buffer) {
   }
 }
 
-function createSoundListPage(sounds: MemeSound[], page: number, pageSize: number, keyword?: string): SoundListPage {
-  const totalPages = Math.max(1, Math.ceil(sounds.length / pageSize))
-  const currentPage = Math.min(Math.max(page, 1), totalPages)
-  const start = (currentPage - 1) * pageSize
-  const pageSounds = sounds.slice(start, start + pageSize)
+function createSoundListPage(sounds: MemeSound[], keyword?: string): SoundListPage {
   const title = keyword
     ? `匹配 "${keyword}" 的音效 (${sounds.length})`
     : `可用音效 (${sounds.length})`
@@ -157,27 +126,18 @@ function createSoundListPage(sounds: MemeSound[], page: number, pageSize: number
     title,
     keyword,
     totalSounds: sounds.length,
-    totalPages,
-    currentPage,
-    start,
-    sounds: pageSounds,
+    sounds,
   }
 }
 
 function formatSoundListPage(page: SoundListPage) {
   const lines = [
-    `${page.title} - 第 ${page.currentPage}/${page.totalPages} 页`,
-    ...page.sounds.map((sound, index) => `${String(page.start + index + 1).padStart(3, ' ')}. ${sound.name}`),
+    page.title,
+    ...page.sounds.map((sound, index) => `${String(index + 1).padStart(3, ' ')}. ${sound.name}`),
     '',
     `播放：audiomeme <音效名>`,
     `搜索：audiomeme list <关键词>`,
   ]
-
-  if (page.currentPage < page.totalPages) {
-    lines.push(`下一页：audiomeme list ${page.currentPage + 1}${page.keyword ? ` ${page.keyword}` : ''}`)
-  } else {
-    lines.push('已经是最后一页。')
-  }
 
   return lines.join('\n')
 }
@@ -195,16 +155,14 @@ function buildSoundListHtml(page: SoundListPage) {
   const width = 1100
   const items = page.sounds
     .map((sound, index) => {
-      const number = page.start + index + 1
+      const number = index + 1
       return `<div class="sound-item"><div class="sound-index">${number}</div><div class="sound-name">${escapeHtml(sound.name)}</div></div>`
     })
     .join('')
 
   const keyword = page.keyword ? `<div class="filter">搜索：${escapeHtml(page.keyword)}</div>` : ''
-  const subtitle = `${page.totalSounds} 个音效 · 第 ${page.currentPage}/${page.totalPages} 页 · 每页最多 ${MAX_LIST_PAGE_SIZE} 个`
-  const footer = page.currentPage < page.totalPages
-    ? `下一页：audiomeme list ${page.currentPage + 1}${page.keyword ? ` ${page.keyword}` : ''}`
-    : '播放：audiomeme <音效名> · 随机：audiomeme random'
+  const subtitle = `${page.totalSounds} 个音效`
+  const footer = '播放：audiomeme <音效名> · 随机：audiomeme random'
 
   return `<!doctype html><html><head><meta charset="utf-8"/><style>html,body{margin:0;padding:0;width:max-content;background:#ffffff;font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC","Segoe UI",Arial,sans-serif;color:#1f2937;}#list{display:inline-block;width:${width}px;box-sizing:border-box;background:#ffffff;}.panel{background:#ffffff;border:1px solid #d8e0ea;border-radius:8px;overflow:hidden;}.header{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;padding:18px 22px 14px;border-bottom:1px solid #d8e0ea;background:#f8fafc;}.title{font-size:28px;line-height:1.2;font-weight:800;color:#111827;letter-spacing:0;}.subtitle{margin-top:6px;font-size:14px;line-height:1.4;color:#64748b;letter-spacing:0;}.filter{flex:0 0 auto;max-width:320px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;background:#ffffff;color:#475569;font-size:13px;line-height:1.35;word-break:break-word;overflow-wrap:anywhere;}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 10px;padding:16px 18px 18px;}.sound-item{display:grid;grid-template-columns:38px minmax(0,1fr);align-items:center;min-height:34px;border:1px solid #dbe3ee;border-radius:6px;background:#ffffff;overflow:hidden;}.sound-index{height:100%;display:flex;align-items:center;justify-content:center;background:#0f766e;color:#ffffff;font-size:13px;font-weight:800;letter-spacing:0;}.sound-name{padding:7px 9px;font-size:14px;line-height:1.25;font-weight:650;color:#263244;letter-spacing:0;word-break:break-word;overflow-wrap:anywhere;}.sound-item:nth-child(8n+2) .sound-index,.sound-item:nth-child(8n+4) .sound-index,.sound-item:nth-child(8n+5) .sound-index,.sound-item:nth-child(8n+7) .sound-index{background:#4f46e5;}.footer{padding:12px 20px 14px;border-top:1px solid #d8e0ea;background:#f8fafc;color:#475569;font-size:14px;line-height:1.4;letter-spacing:0;word-break:break-word;overflow-wrap:anywhere;}</style></head><body><div id="list"><div class="panel"><div class="header"><div><div class="title">${escapeHtml(page.title)}</div><div class="subtitle">${escapeHtml(subtitle)}</div></div>${keyword}</div><div class="grid">${items}</div><div class="footer">${escapeHtml(footer)}</div></div></div></body></html>`
 }
@@ -289,39 +247,28 @@ export function apply(ctx: Context, config: Config) {
     return playSound(sound)
   }
 
-  const listSounds = async (input?: string, renderAllPages = true) => {
-    const { page, keyword, explicitPage } = parseListArgs(input)
+  const listSounds = async (input?: string) => {
+    const { keyword } = parseListArgs(input)
     const matchedSounds = matchSounds(sounds, keyword)
-    const pageSize = normalizePageSize(config.pageSize)
 
     if (!matchedSounds.length) {
       return `没有找到匹配 "${keyword}" 的音效。`
     }
 
-    const totalPages = Math.max(1, Math.ceil(matchedSounds.length / pageSize))
-    const pages = renderAllPages && !explicitPage
-      ? Array.from({ length: totalPages }, (_, index) => index + 1)
-      : [page]
-    const renderedPages = []
-
-    for (const pageNumber of pages) {
-      const soundListPage = createSoundListPage(matchedSounds, pageNumber, pageSize, keyword)
-      renderedPages.push(await renderSoundListPage(ctx, logger, soundListPage))
-    }
-
-    return renderedPages.join('\n')
+    const soundListPage = createSoundListPage(matchedSounds, keyword)
+    return renderSoundListPage(ctx, logger, soundListPage)
   }
 
   ctx.command('audiomeme [action:text]', '播放或查看音效 meme')
     .alias('memeaudio')
     .action(async ({ session }, action) => {
       const normalizedAction = (action || '').trim()
-      if (!normalizedAction) return listSounds(undefined, false)
+      if (!normalizedAction) return listSounds(undefined)
 
       const [command, ...rest] = normalizedAction.split(/\s+/)
       const commandArgs = rest.join(' ')
 
-      if (command === 'list') return listSounds(commandArgs, true)
+      if (command === 'list') return listSounds(commandArgs)
       if (command === 'random') return playRandomSound()
 
       return playSoundByName(normalizedAction)
@@ -330,7 +277,7 @@ export function apply(ctx: Context, config: Config) {
   ctx.command('audiomeme.list [query:text]', '查看音效 meme 列表')
     .alias('memeaudio.list')
     .action(({ session }, query) => {
-      return listSounds(query, true)
+      return listSounds(query)
     })
 
   ctx.command('audiomeme.random', '随机播放音效 meme')

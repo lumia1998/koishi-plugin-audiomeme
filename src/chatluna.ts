@@ -140,8 +140,8 @@ export function createAudioMemeToolDescription(sounds: readonly AudioMemeSound[]
   const list = rows.length ? rows.join('\n') : '当前没有可用音效 | '
 
   return [
-    '播放一个 meme 音效。根据用户需求从下面的可用音效列表中选择最合适的一项，然后调用 audiomeme 工具。',
-    '调用时必须把所选行的 url 原样传入 url 参数；不要编造不在列表里的 URL。',
+    '播放一个 meme 音效。你可以根据当前对话的语境、情绪或场景，自主且智能地选择最合适的音效进行播放，以增强你的表达能力和趣味性。',
+    '调用时必须从下面的可用音效列表中选择，并将所选行的 url 原样传入 url 参数；切勿自行编造列表中不存在的 URL。',
     '',
     '名字 | url',
     list,
