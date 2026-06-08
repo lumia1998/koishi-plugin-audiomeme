@@ -1,9 +1,24 @@
 {
   "name": "koishi-plugin-audiomeme",
   "description": "Play meme sounds from a JSON database with cache cleanup.",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lumia1998/koishi-plugin-audiomeme.git"
+  },
+  "homepage": "https://github.com/lumia1998/koishi-plugin-audiomeme#readme",
+  "bugs": {
+    "url": "https://github.com/lumia1998/koishi-plugin-audiomeme/issues"
+  },
+  "keywords": [
+    "koishi",
+    "koishi-plugin",
+    "audio",
+    "meme",
+    "chatluna"
+  ],
   "files": [
     "lib",
     "dist",
@@ -29,7 +44,8 @@
   "koishi": {
     "service": {
       "optional": [
-        "chatluna_character"
+        "chatluna_character",
+        "puppeteer"
       ]
     }
   }

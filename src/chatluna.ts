@@ -277,13 +277,13 @@ function registerReplyTool(options: InstallChatlunaAudioMemeToolsOptions): () =>
     name: 'audiomeme_play',
     schema: {
       type: 'array',
-      description: 'Play audio meme sounds after this reply. Each item represents one audio meme action.',
+      description: '在本次回复之后播放 meme 音效。数组中的每一项代表一个要播放的音效动作。',
       items: {
         type: 'object',
         properties: {
           name: {
             type: 'string',
-            description: 'Audio meme name to play, for example bruh.',
+            description: '要播放的音效名称，必须使用 audiomeme list 中存在的名称，例如 bruh。',
           },
         },
         required: ['name'],
