@@ -22,10 +22,15 @@ export interface Config {
   audioMemeXmlReferencePrompt: string
 }
 
+const sounds: MemeSound[] = require('../meme_sounds.json')
+const SOUND_NAMES = sounds.map(sound => sound.name).filter(Boolean)
+const AVAILABLE_SOUND_NAMES_TEXT = SOUND_NAMES.join('、') || '当前没有可用音效'
+
 const AUDIO_MEME_XML_REFERENCE_PROMPT = `## 动作指令
 你可以根据需要在模型回复中输出一个独立的 <actions> 元素。它用于执行非语言的系统指令。如果不需要播放音效，请省略此元素。
 - audiomeme: \`<audiomeme name=""/>\`
   - name: 音效名称，必须使用 audiomeme list 中存在的名称。
+  - 当前可用音效名称：${AVAILABLE_SOUND_NAMES_TEXT}
   - 可用别名：\`<memeaudio name=""/>\`、\`<audio-meme key=""/>\`。
   - 示例：
     - <audiomeme name="bruh"/> ## 吐槽、无语、被整活时使用
@@ -250,7 +255,6 @@ async function renderSoundListPage(ctx: Context, logger: ReturnType<Context['log
 
 export function apply(ctx: Context, config: Config) {
   const logger = ctx.logger('audiomeme')
-  const sounds: MemeSound[] = require('../meme_sounds.json')
   const soundsByName = new Map(sounds.map(sound => [sound.name.toLowerCase(), sound]))
   const lastAccess = new Map<string, number>()
   const cacheDir = path.resolve(ctx.baseDir, config.cachePath)
@@ -363,6 +367,7 @@ export function apply(ctx: Context, config: Config) {
     ctx,
     config,
     logger,
+    soundNames: SOUND_NAMES,
     async executeToolCall(_session, toolCall: AudioMemeToolCall) {
       const result = await playSound(toolCall.name)
       return {

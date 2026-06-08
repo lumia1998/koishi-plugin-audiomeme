@@ -52,6 +52,7 @@ XML 示例：
 你可以根据需要在模型回复中输出一个独立的 <actions> 元素。它用于执行非语言的系统指令。如果不需要播放音效，请省略此元素。
 - audiomeme: `<audiomeme name=""/>`
   - name: 音效名称，必须使用 audiomeme list 中存在的名称。
+  - 当前可用音效名称：fahhhhhhhhhhhhhh、fart、anime-wow、among-us-role-reveal-sound、apple-pay、sad-violin-the-meme-one、anime-ahh、bruh、error-soundss、metal-pipe-clang、john-cena、quack、cricket、spongebob-fail、taco-bell-bong、vine-boom-sound-effect-full、mario-jump、windows-xp-error、roblox-death-sound、bonk、hello-your-computer-has-virus、aughhhhh、anime-girl-scream、sus、goofy-ahh-laugh、emotional-damage-meme、anime-ara-ara、hehe-boi、baby-laughing-meme、asian-jeff-laugh、android-notification-meme、anime-wow-2、cat-laugh-meme-1、discord-notification、metal-gear-alert、nani-meme、nope-meme、oh-my-god-wow-meme、oof-meme、sad-trombone、scream-meme、tuturu、victory-sound-effect、wet-fart-meme、why-are-you-running、windows-7-startup、yahoo、yes-meme、you-died
   - 可用别名：`<memeaudio name=""/>`、`<audio-meme key=""/>`。
   - 示例：
     - <audiomeme name="bruh"/> ## 吐槽、无语、被整活时使用
@@ -89,13 +90,64 @@ Reply tool 参数示例：
   "name": "audiomeme_play",
   "schema": {
     "type": "array",
-    "description": "在本次回复之后播放 meme 音效。数组中的每一项代表一个要播放的音效动作。",
+    "description": "在本次回复之后播放 meme 音效。数组中的每一项代表一个要播放的音效动作。name 必须从以下可用音效名称中选择：fahhhhhhhhhhhhhh、fart、anime-wow、among-us-role-reveal-sound、apple-pay、sad-violin-the-meme-one、anime-ahh、bruh、error-soundss、metal-pipe-clang、john-cena、quack、cricket、spongebob-fail、taco-bell-bong、vine-boom-sound-effect-full、mario-jump、windows-xp-error、roblox-death-sound、bonk、hello-your-computer-has-virus、aughhhhh、anime-girl-scream、sus、goofy-ahh-laugh、emotional-damage-meme、anime-ara-ara、hehe-boi、baby-laughing-meme、asian-jeff-laugh、android-notification-meme、anime-wow-2、cat-laugh-meme-1、discord-notification、metal-gear-alert、nani-meme、nope-meme、oh-my-god-wow-meme、oof-meme、sad-trombone、scream-meme、tuturu、victory-sound-effect、wet-fart-meme、why-are-you-running、windows-7-startup、yahoo、yes-meme、you-died。",
     "items": {
       "type": "object",
       "properties": {
         "name": {
           "type": "string",
-          "description": "要播放的音效名称，必须使用 audiomeme list 中存在的名称，例如 bruh。"
+          "description": "要播放的音效名称，必须精确匹配可用音效名称之一。",
+          "enum": [
+            "fahhhhhhhhhhhhhh",
+            "fart",
+            "anime-wow",
+            "among-us-role-reveal-sound",
+            "apple-pay",
+            "sad-violin-the-meme-one",
+            "anime-ahh",
+            "bruh",
+            "error-soundss",
+            "metal-pipe-clang",
+            "john-cena",
+            "quack",
+            "cricket",
+            "spongebob-fail",
+            "taco-bell-bong",
+            "vine-boom-sound-effect-full",
+            "mario-jump",
+            "windows-xp-error",
+            "roblox-death-sound",
+            "bonk",
+            "hello-your-computer-has-virus",
+            "aughhhhh",
+            "anime-girl-scream",
+            "sus",
+            "goofy-ahh-laugh",
+            "emotional-damage-meme",
+            "anime-ara-ara",
+            "hehe-boi",
+            "baby-laughing-meme",
+            "asian-jeff-laugh",
+            "android-notification-meme",
+            "anime-wow-2",
+            "cat-laugh-meme-1",
+            "discord-notification",
+            "metal-gear-alert",
+            "nani-meme",
+            "nope-meme",
+            "oh-my-god-wow-meme",
+            "oof-meme",
+            "sad-trombone",
+            "scream-meme",
+            "tuturu",
+            "victory-sound-effect",
+            "wet-fart-meme",
+            "why-are-you-running",
+            "windows-7-startup",
+            "yahoo",
+            "yes-meme",
+            "you-died"
+          ]
         }
       },
       "required": ["name"]

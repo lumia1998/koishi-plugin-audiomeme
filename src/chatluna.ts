@@ -20,6 +20,7 @@ export interface InstallChatlunaAudioMemeToolsOptions {
   ctx: Context
   config: AudioMemeToolConfig
   logger: ReturnType<Context['logger']>
+  soundNames: string[]
   executeToolCall: (session: Session, toolCall: AudioMemeToolCall) => Promise<AudioMemeToolPayload | null>
 }
 
@@ -213,6 +214,27 @@ function renderXmlAction(action: AudioMemeToolCall): string {
   return `<audiomeme name="${escapeXmlAttr(action.name)}" />`
 }
 
+function normalizeSoundNames(soundNames: readonly string[]) {
+  const seenNames = new Set<string>()
+  const normalizedNames: string[] = []
+
+  for (const soundName of soundNames) {
+    const normalizedName = normalizeToolValue(soundName)
+    const signature = normalizedName.toLowerCase()
+    if (!normalizedName || seenNames.has(signature)) continue
+
+    seenNames.add(signature)
+    normalizedNames.push(normalizedName)
+  }
+
+  return normalizedNames
+}
+
+function formatAvailableSoundNames(soundNames: readonly string[]) {
+  const normalizedNames = normalizeSoundNames(soundNames)
+  return normalizedNames.length ? normalizedNames.join('、') : '当前没有可用音效'
+}
+
 function createResponseFingerprint(message: AssistantMessageLike, response: string): string {
   return `${getMessageType(message)}:${response}`
 }
@@ -261,8 +283,10 @@ function subscribeAssistantResponses(
 }
 
 function registerReplyTool(options: InstallChatlunaAudioMemeToolsOptions): () => void {
-  const { ctx, config, logger, executeToolCall } = options
+  const { ctx, config, logger, soundNames, executeToolCall } = options
   const service = resolveCharacterService(ctx)
+  const availableSoundNames = normalizeSoundNames(soundNames)
+  const availableSoundNamesText = formatAvailableSoundNames(availableSoundNames)
 
   if (!config.enableAudioMemeXmlTool || !config.injectAudioMemeXmlToolAsReplyTool) {
     return () => {}
@@ -277,13 +301,14 @@ function registerReplyTool(options: InstallChatlunaAudioMemeToolsOptions): () =>
     name: 'audiomeme_play',
     schema: {
       type: 'array',
-      description: '在本次回复之后播放 meme 音效。数组中的每一项代表一个要播放的音效动作。',
+      description: `在本次回复之后播放 meme 音效。数组中的每一项代表一个要播放的音效动作。name 必须从以下可用音效名称中选择：${availableSoundNamesText}。`,
       items: {
         type: 'object',
         properties: {
           name: {
             type: 'string',
-            description: '要播放的音效名称，必须使用 audiomeme list 中存在的名称，例如 bruh。',
+            description: '要播放的音效名称，必须精确匹配可用音效名称之一。',
+            ...(availableSoundNames.length ? { enum: availableSoundNames } : {}),
           },
         },
         required: ['name'],
