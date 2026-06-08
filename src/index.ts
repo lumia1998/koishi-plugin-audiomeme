@@ -26,7 +26,7 @@ export const Config: Schema<Config> = Schema.object({
   cachePath: Schema.string().default('cache/audiomeme').description('音频文件缓存目录。'),
   cleanupInterval: Schema.number().default(10 * 60 * 1000).description('缓存清理间隔，单位为毫秒，默认 10 分钟。'),
   cacheMaxAge: Schema.number().default(60 * 60 * 1000).description('缓存文件最长保留时间，单位为毫秒，默认 1 小时。'),
-  pageSize: Schema.number().min(5).max(50).default(50).description('列表图片每页显示的音效数量，最多 50 个。'),
+  pageSize: Schema.number().min(5).max(100).default(100).description('列表图片每页显示的音效数量，最多 100 个。'),
   downloadTimeout: Schema.number().min(1000).default(30 * 1000).description('音频下载超时时间，单位为毫秒。'),
   sendMode: Schema.union([
     Schema.const('remote').description('远程链接：直接把音频 URL 交给平台发送，推荐 OneBot 使用。'),
@@ -55,11 +55,11 @@ interface SoundListPage {
 
 interface ContextWithOptionalPuppeteer extends Context {
   puppeteer?: {
-    render: (content: string) => Promise<string>
+    render: (content: string, callback?: (page: unknown, next: (handle?: unknown) => Promise<string>) => Promise<string>) => Promise<string>
   }
 }
 
-const MAX_LIST_PAGE_SIZE = 50
+const MAX_LIST_PAGE_SIZE = 100
 const MIN_AUDIO_FILE_SIZE = 1024
 
 function matchSounds(sounds: MemeSound[], keyword?: string) {
@@ -192,7 +192,7 @@ function escapeHtml(value: string) {
 }
 
 function buildSoundListHtml(page: SoundListPage) {
-  const width = 1160
+  const width = 1100
   const items = page.sounds
     .map((sound, index) => {
       const number = page.start + index + 1
@@ -206,7 +206,7 @@ function buildSoundListHtml(page: SoundListPage) {
     ? `下一页：audiomeme list ${page.currentPage + 1}${page.keyword ? ` ${page.keyword}` : ''}`
     : '播放：audiomeme <音效名> · 随机：audiomeme random'
 
-  return `<!doctype html><html><head><meta charset="utf-8"/><style>body{margin:0;background:#eef2f6;font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC","Segoe UI",Arial,sans-serif;color:#1f2937;}#list{width:${width}px;box-sizing:border-box;padding:34px 40px 38px;background:#eef2f6;}.panel{background:#ffffff;border:1px solid #d7dee9;border-radius:8px;overflow:hidden;box-shadow:0 10px 28px rgba(15,23,42,.08);}.header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;padding:26px 30px 22px;border-bottom:1px solid #d7dee9;background:#f8fafc;}.title{font-size:34px;line-height:1.25;font-weight:800;color:#111827;letter-spacing:0;}.subtitle{margin-top:8px;font-size:18px;line-height:1.45;color:#64748b;letter-spacing:0;}.filter{flex:0 0 auto;max-width:380px;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;background:#ffffff;color:#475569;font-size:17px;line-height:1.45;word-break:break-word;overflow-wrap:anywhere;}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px;padding:24px 30px 28px;}.sound-item{display:grid;grid-template-columns:54px minmax(0,1fr);align-items:center;min-height:52px;border:1px solid #dbe3ee;border-radius:8px;background:#ffffff;overflow:hidden;}.sound-index{height:100%;display:flex;align-items:center;justify-content:center;background:#0f766e;color:#ffffff;font-size:18px;font-weight:700;letter-spacing:0;}.sound-name{padding:10px 14px;font-size:20px;line-height:1.35;font-weight:650;color:#263244;letter-spacing:0;word-break:break-word;overflow-wrap:anywhere;}.sound-item:nth-child(4n+2) .sound-index,.sound-item:nth-child(4n+3) .sound-index{background:#4f46e5;}.footer{padding:18px 30px 22px;border-top:1px solid #d7dee9;background:#f8fafc;color:#475569;font-size:18px;line-height:1.45;letter-spacing:0;word-break:break-word;overflow-wrap:anywhere;}</style></head><body><div id="list"><div class="panel"><div class="header"><div><div class="title">${escapeHtml(page.title)}</div><div class="subtitle">${escapeHtml(subtitle)}</div></div>${keyword}</div><div class="grid">${items}</div><div class="footer">${escapeHtml(footer)}</div></div></div></body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8"/><style>html,body{margin:0;padding:0;width:max-content;background:#ffffff;font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC","Segoe UI",Arial,sans-serif;color:#1f2937;}#list{display:inline-block;width:${width}px;box-sizing:border-box;background:#ffffff;}.panel{background:#ffffff;border:1px solid #d8e0ea;border-radius:8px;overflow:hidden;}.header{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;padding:18px 22px 14px;border-bottom:1px solid #d8e0ea;background:#f8fafc;}.title{font-size:28px;line-height:1.2;font-weight:800;color:#111827;letter-spacing:0;}.subtitle{margin-top:6px;font-size:14px;line-height:1.4;color:#64748b;letter-spacing:0;}.filter{flex:0 0 auto;max-width:320px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;background:#ffffff;color:#475569;font-size:13px;line-height:1.35;word-break:break-word;overflow-wrap:anywhere;}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 10px;padding:16px 18px 18px;}.sound-item{display:grid;grid-template-columns:38px minmax(0,1fr);align-items:center;min-height:34px;border:1px solid #dbe3ee;border-radius:6px;background:#ffffff;overflow:hidden;}.sound-index{height:100%;display:flex;align-items:center;justify-content:center;background:#0f766e;color:#ffffff;font-size:13px;font-weight:800;letter-spacing:0;}.sound-name{padding:7px 9px;font-size:14px;line-height:1.25;font-weight:650;color:#263244;letter-spacing:0;word-break:break-word;overflow-wrap:anywhere;}.sound-item:nth-child(8n+2) .sound-index,.sound-item:nth-child(8n+4) .sound-index,.sound-item:nth-child(8n+5) .sound-index,.sound-item:nth-child(8n+7) .sound-index{background:#4f46e5;}.footer{padding:12px 20px 14px;border-top:1px solid #d8e0ea;background:#f8fafc;color:#475569;font-size:14px;line-height:1.4;letter-spacing:0;word-break:break-word;overflow-wrap:anywhere;}</style></head><body><div id="list"><div class="panel"><div class="header"><div><div class="title">${escapeHtml(page.title)}</div><div class="subtitle">${escapeHtml(subtitle)}</div></div>${keyword}</div><div class="grid">${items}</div><div class="footer">${escapeHtml(footer)}</div></div></div></body></html>`
 }
 
 async function renderSoundListPage(ctx: Context, logger: ReturnType<Context['logger']>, page: SoundListPage) {
@@ -215,7 +215,10 @@ async function renderSoundListPage(ctx: Context, logger: ReturnType<Context['log
   if (!puppeteer) return fallback
 
   try {
-    return await puppeteer.render(buildSoundListHtml(page)) || fallback
+    return await puppeteer.render(buildSoundListHtml(page), async (browserPage, next) => {
+      const handle = await (browserPage as { $: (selector: string) => Promise<unknown> }).$('#list')
+      return next(handle)
+    }) || fallback
   } catch (error) {
     logger.warn('audiomeme list image render failed, fallback to text: %s', String(error))
     return fallback

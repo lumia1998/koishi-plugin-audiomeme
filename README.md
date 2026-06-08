@@ -21,7 +21,7 @@ audiomeme random
 - `audiomeme random` 随机播放一个音效。
 - 兼容旧命令：`memeaudio`、`memeaudio.list`、`memeaudio.random`。
 
-列表图片每页最多 50 个音效；如果没有安装 `koishi-plugin-puppeteer`，会自动回退为文本列表。
+列表图片每页最多 100 个音效；如果没有安装 `koishi-plugin-puppeteer`，会自动回退为文本列表。
 
 ## Audio Sending
 
