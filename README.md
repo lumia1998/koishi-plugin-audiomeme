@@ -7,21 +7,19 @@
 ```text
 audiomeme
 audiomeme <音效名>
-audiomeme list [页码]
+audiomeme list
 audiomeme list [关键词]
-audiomeme list [页码] [关键词]
 audiomeme random
 ```
 
-- `audiomeme` 显示第一页可用音效。
+- `audiomeme` 显示全部可用音效。
 - `audiomeme <音效名>` 下载并播放指定音效。
-- `audiomeme list` 以图片显示全部可用音效，超过每页数量时自动分成多张图片。
-- `audiomeme list 2` 只显示第 2 页。
+- `audiomeme list` 以单张图片显示全部可用音效。
 - `audiomeme list cat` 按音效名搜索，并以图片显示搜索结果。
 - `audiomeme random` 随机播放一个音效。
 - 兼容旧命令：`memeaudio`、`memeaudio.list`、`memeaudio.random`。
 
-列表图片每页最多 100 个音效；如果没有安装 `koishi-plugin-puppeteer`，会自动回退为文本列表。
+如果没有安装 `koishi-plugin-puppeteer`，会自动回退为文本列表。
 
 ## Audio Sending
 
@@ -31,7 +29,7 @@ audiomeme random
 
 ## ChatLuna Tool Calls
 
-开启 `enableChatLunaTool` 后，插件会向 ChatLuna 注册原生工具 `audiomeme`。
+开启 `enableChatLunaTool` 后，插件会向 ChatLuna 注册原生工具 `audiomeme`。支持大模型根据对话的语境、情绪或场景智能选择合适的音效进行播放，增强 AI 的表达能力和趣味性。
 
 工具描述会自动从 `meme_sounds.json` 生成完整可用音效列表，格式如下：
 
