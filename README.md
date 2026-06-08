@@ -31,132 +31,30 @@ audiomeme random
 
 ## ChatLuna Tool Calls
 
-本插件可以选择接入 `chatluna_character`。
+开启 `enableChatLunaTool` 后，插件会向 ChatLuna 注册原生工具 `audiomeme`。
 
-- `enableAudioMemeXmlTool`：启用 ChatLuna 回复中的 XML 音效工具调用。
-- `injectAudioMemeXmlToolAsReplyTool`：将同一个 XML 音效工具注入实验性“工具调用回复”参数中；可用时会关闭直接 XML 动作执行，避免重复播放。
-- `audioMemeXmlReferencePrompt`：显示给你复制到角色提示词里的 XML 参考提示词；它不会被插件自动注入。
-
-XML 示例：
-
-```xml
-<audiomeme name="bruh" />
-<memeaudio name="vine-boom-sound-effect-full" />
-<audio-meme key="cat-laugh-meme-1" />
-```
-
-配置界面中显示的 XML 参考提示词内容如下：
-
-````text
-## 动作指令
-你可以根据需要在模型回复中输出一个独立的 <actions> 元素。它用于执行非语言的系统指令。如果不需要播放音效，请省略此元素。
-- audiomeme: `<audiomeme name=""/>`
-  - name: 音效名称，必须使用 audiomeme list 中存在的名称。
-  - 当前可用音效名称：fahhhhhhhhhhhhhh、fart、anime-wow、among-us-role-reveal-sound、apple-pay、sad-violin-the-meme-one、anime-ahh、bruh、error-soundss、metal-pipe-clang、john-cena、quack、cricket、spongebob-fail、taco-bell-bong、vine-boom-sound-effect-full、mario-jump、windows-xp-error、roblox-death-sound、bonk、hello-your-computer-has-virus、aughhhhh、anime-girl-scream、sus、goofy-ahh-laugh、emotional-damage-meme、anime-ara-ara、hehe-boi、baby-laughing-meme、asian-jeff-laugh、android-notification-meme、anime-wow-2、cat-laugh-meme-1、discord-notification、metal-gear-alert、nani-meme、nope-meme、oh-my-god-wow-meme、oof-meme、sad-trombone、scream-meme、tuturu、victory-sound-effect、wet-fart-meme、why-are-you-running、windows-7-startup、yahoo、yes-meme、you-died
-  - 可用别名：`<memeaudio name=""/>`、`<audio-meme key=""/>`。
-  - 示例：
-    - <audiomeme name="bruh"/> ## 吐槽、无语、被整活时使用
-    - <audiomeme name="vine-boom-sound-effect-full"/> ## 强调震惊、揭晓或反转时使用
-    - <audiomeme name="cat-laugh-meme-1"/> ## 调侃、轻松嘲笑时使用
-  - 要求：
-    - 每次只在需要气氛音效时输出。
-    - name 必须精确匹配音效名称，不要自行翻译或改写。
-    - 音效是回复的补充，不要用音效替代必要的文字回复。
-
-格式示例：
-```xml
-<actions>
-  <audiomeme name="bruh"/>
-</actions>
-```
-````
-
-Reply tool 字段名：
+工具描述会自动从 `meme_sounds.json` 生成完整可用音效列表，格式如下：
 
 ```text
-audiomeme_play
+名字 | url
+bruh | https://www.myinstants.com/media/sounds/movie_1.mp3
+cat-laugh-meme-1 | https://www.myinstants.com/media/sounds/cat-laugh-meme-1.mp3
+...
 ```
 
-Reply tool 参数示例：
-
-```json
-[{ "name": "bruh" }]
-```
-
-开启 `injectAudioMemeXmlToolAsReplyTool` 后，插件注入给 ChatLuna Character 的字段是：
+工具参数：
 
 ```json
 {
-  "name": "audiomeme_play",
-  "schema": {
-    "type": "array",
-    "description": "在本次回复之后播放 meme 音效。数组中的每一项代表一个要播放的音效动作。name 必须从以下可用音效名称中选择：fahhhhhhhhhhhhhh、fart、anime-wow、among-us-role-reveal-sound、apple-pay、sad-violin-the-meme-one、anime-ahh、bruh、error-soundss、metal-pipe-clang、john-cena、quack、cricket、spongebob-fail、taco-bell-bong、vine-boom-sound-effect-full、mario-jump、windows-xp-error、roblox-death-sound、bonk、hello-your-computer-has-virus、aughhhhh、anime-girl-scream、sus、goofy-ahh-laugh、emotional-damage-meme、anime-ara-ara、hehe-boi、baby-laughing-meme、asian-jeff-laugh、android-notification-meme、anime-wow-2、cat-laugh-meme-1、discord-notification、metal-gear-alert、nani-meme、nope-meme、oh-my-god-wow-meme、oof-meme、sad-trombone、scream-meme、tuturu、victory-sound-effect、wet-fart-meme、why-are-you-running、windows-7-startup、yahoo、yes-meme、you-died。",
-    "items": {
-      "type": "object",
-      "properties": {
-        "name": {
-          "type": "string",
-          "description": "要播放的音效名称，必须精确匹配可用音效名称之一。",
-          "enum": [
-            "fahhhhhhhhhhhhhh",
-            "fart",
-            "anime-wow",
-            "among-us-role-reveal-sound",
-            "apple-pay",
-            "sad-violin-the-meme-one",
-            "anime-ahh",
-            "bruh",
-            "error-soundss",
-            "metal-pipe-clang",
-            "john-cena",
-            "quack",
-            "cricket",
-            "spongebob-fail",
-            "taco-bell-bong",
-            "vine-boom-sound-effect-full",
-            "mario-jump",
-            "windows-xp-error",
-            "roblox-death-sound",
-            "bonk",
-            "hello-your-computer-has-virus",
-            "aughhhhh",
-            "anime-girl-scream",
-            "sus",
-            "goofy-ahh-laugh",
-            "emotional-damage-meme",
-            "anime-ara-ara",
-            "hehe-boi",
-            "baby-laughing-meme",
-            "asian-jeff-laugh",
-            "android-notification-meme",
-            "anime-wow-2",
-            "cat-laugh-meme-1",
-            "discord-notification",
-            "metal-gear-alert",
-            "nani-meme",
-            "nope-meme",
-            "oh-my-god-wow-meme",
-            "oof-meme",
-            "sad-trombone",
-            "scream-meme",
-            "tuturu",
-            "victory-sound-effect",
-            "wet-fart-meme",
-            "why-are-you-running",
-            "windows-7-startup",
-            "yahoo",
-            "yes-meme",
-            "you-died"
-          ]
-        }
-      },
-      "required": ["name"]
-    }
-  }
+  "url": "https://www.myinstants.com/media/sounds/movie_1.mp3",
+  "name": "bruh"
 }
 ```
 
-这个模式下通常不需要再把完整 XML 参考提示词复制到角色提示词里。
+- `url`：必填，必须从工具描述中的可用音效列表原样选择。
+- `name`：可选，对应同一行的音效名称。
+
+ChatLuna 调用工具后，插件会按当前“音效发送模式”发送这条 URL 对应的语音。旧版 XML 回复解析和 Character Reply Tool 字段注入已移除。
 
 ## Build
 

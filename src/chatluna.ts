@@ -1,471 +1,278 @@
 import type { Context, Fragment, Session } from 'koishi'
+import { tool, type StructuredTool, type ToolRunnableConfig } from '@langchain/core/tools'
 
-export interface AudioMemeToolCall {
+export interface AudioMemeSound {
   name: string
-}
-
-export type AudioMemeToolResult = Fragment
-
-export interface AudioMemeToolPayload {
-  soundName: string
-  result: AudioMemeToolResult
+  url: string
 }
 
 export interface AudioMemeToolConfig {
-  enableAudioMemeXmlTool: boolean
-  injectAudioMemeXmlToolAsReplyTool: boolean
+  enableChatLunaTool: boolean
 }
 
-export interface InstallChatlunaAudioMemeToolsOptions {
+export interface InstallChatlunaAudioMemeToolOptions {
   ctx: Context
   config: AudioMemeToolConfig
   logger: ReturnType<Context['logger']>
-  soundNames: string[]
-  executeToolCall: (session: Session, toolCall: AudioMemeToolCall) => Promise<AudioMemeToolPayload | null>
+  sounds: AudioMemeSound[]
+  playSound: (sound: AudioMemeSound) => Promise<Fragment | string>
 }
 
-interface AssistantMessageLike {
-  _getType?: () => unknown
-  type?: unknown
-  role?: unknown
-  content?: unknown
-  text?: unknown
+interface ChatlunaToolMeta {
+  source: 'extension'
+  group: string
+  tags: string[]
+  defaultAvailability: {
+    enabled: true
+    main: true
+    chatluna: true
+    characterScope: 'all'
+  }
 }
 
-interface ChatlunaTempLike {
-  completionMessages?: unknown[]
+interface ChatlunaToolRegistration {
+  selector: () => boolean
+  authorization?: (session: Session) => boolean
+  description: string
+  createTool: () => StructuredTool
+  meta: ChatlunaToolMeta
 }
 
-interface CharacterReplyToolField {
-  name: string
-  schema: Record<string, unknown>
-  isAvailable?: (ctx: Context, session: Session, config: unknown) => boolean
-  invoke?: (ctx: Context, session: Session, value: unknown, config: unknown) => Promise<void> | void
-  render?: (ctx: Context, session: Session, value: unknown, config: unknown) => string | string[] | undefined
+interface ChatlunaPlatformLike {
+  registerTool?: (name: string, tool: ChatlunaToolRegistration) => (() => void) | void
 }
 
-interface ChatlunaCharacterServiceLike {
-  getTemp?: (...args: unknown[]) => Promise<ChatlunaTempLike | undefined> | ChatlunaTempLike | undefined
-  registerReplyToolField?: (field: CharacterReplyToolField) => () => void
+interface ContextWithChatluna extends Context {
+  chatluna?: {
+    platform?: ChatlunaPlatformLike
+  }
 }
 
-interface ContextWithChatlunaCharacter extends Context {
-  chatluna_character?: ChatlunaCharacterServiceLike
+interface AudioMemeToolRunnableConfig extends ToolRunnableConfig {
+  configurable?: ToolRunnableConfig['configurable'] & {
+    session?: Session
+  }
 }
 
-interface MessageSubscription {
-  originalPush: (...items: unknown[]) => number
-  patchedPush: (...items: unknown[]) => number
+const AUDIO_MEME_TOOL_NAME = 'audiomeme'
+
+const AudioMemeToolSchema = {
+  type: 'object',
+  properties: {
+    url: {
+      type: 'string',
+      description: '必须从工具描述的可用音效列表中选择下载地址，并原样传入。',
+    },
+    name: {
+      type: 'string',
+      description: '可选，对应的音效名称，必须与同一行的名字一致。',
+    },
+  },
+  required: ['url'],
+} as const
+
+type AudioMemeToolInput = {
+  url?: unknown
+  name?: unknown
 }
 
-const TOOL_TAG_PATTERN = /<(audiomeme|memeaudio|audio[_-]?meme)\s+([^>]*?)\s*\/?>(?:\s*<\/\1>)?/gi
-const XML_ATTRIBUTE_PATTERN = /([a-zA-Z_][\w:-]*)\s*=\s*"([^"]*)"/g
-const XML_ATTR_WITHOUT_EQUALS_PATTERN = /(?:^|\s)([a-zA-Z_][\w:-]*)\s*"([^"]*)"/g
-const SUPPORTED_ATTRIBUTES = new Set(['name', 'key', 'sound'])
-const TOOL_NAMESPACE = 'koishi-plugin-audiomeme'
+type CreateStructuredTool = (
+  func: (input: AudioMemeToolInput, runConfig?: ToolRunnableConfig) => Promise<string>,
+  fields: {
+    name: string
+    description: string
+    schema: typeof AudioMemeToolSchema
+  },
+) => StructuredTool
 
-function unescapeXml(value: string): string {
-  return value
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-}
+const createStructuredTool = tool as unknown as CreateStructuredTool
 
-function normalizeToolValue(value: unknown): string {
+function normalizeText(value: unknown) {
   return String(value ?? '').trim()
 }
 
-function normalizeToolName(value: unknown): string {
-  return unescapeXml(normalizeToolValue(value))
+function normalizeName(value: unknown) {
+  return normalizeText(value).toLowerCase()
 }
 
-function escapeXmlAttr(value: unknown): string {
-  return normalizeToolValue(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+function normalizeSound(sound: AudioMemeSound): AudioMemeSound | null {
+  const name = normalizeText(sound.name)
+  const url = normalizeText(sound.url)
+  if (!name || !url) return null
+  return { name, url }
 }
 
-function parseAttributes(rawAttributes: string): Map<string, string> {
-  const attributes = new Map<string, string>()
-
-  for (const match of rawAttributes.matchAll(XML_ATTRIBUTE_PATTERN)) {
-    const attributeName = normalizeToolValue(match[1]).toLowerCase()
-    if (!attributeName) continue
-    attributes.set(attributeName, String(match[2] ?? ''))
-  }
-
-  for (const match of rawAttributes.matchAll(XML_ATTR_WITHOUT_EQUALS_PATTERN)) {
-    const attributeName = normalizeToolValue(match[1]).toLowerCase()
-    if (!attributeName || attributes.has(attributeName)) continue
-    attributes.set(attributeName, String(match[2] ?? ''))
-  }
-
-  return attributes
-}
-
-function hasUnsupportedAttributes(attributes: Map<string, string>): boolean {
-  for (const attributeName of attributes.keys()) {
-    if (!SUPPORTED_ATTRIBUTES.has(attributeName)) return true
-  }
-  return false
-}
-
-export function extractXmlAudioMemeToolCalls(content: string): AudioMemeToolCall[] {
-  if (!content) return []
-
-  const toolCalls: AudioMemeToolCall[] = []
+function normalizeSounds(sounds: readonly AudioMemeSound[]) {
+  const normalizedSounds: AudioMemeSound[] = []
   const seenNames = new Set<string>()
+  const seenUrls = new Set<string>()
 
-  for (const match of content.matchAll(TOOL_TAG_PATTERN)) {
-    const attributes = parseAttributes(String(match[2] ?? ''))
-    if (hasUnsupportedAttributes(attributes)) continue
+  for (const sound of sounds) {
+    const normalizedSound = normalizeSound(sound)
+    if (!normalizedSound) continue
 
-    const soundName = normalizeToolName(
-      attributes.get('name') ?? attributes.get('key') ?? attributes.get('sound') ?? '',
-    )
-    if (!soundName) continue
+    const nameSignature = normalizeName(normalizedSound.name)
+    const urlSignature = normalizedSound.url
+    if (seenNames.has(nameSignature) || seenUrls.has(urlSignature)) continue
 
-    const signature = soundName.toLowerCase()
-    if (seenNames.has(signature)) continue
-
-    seenNames.add(signature)
-    toolCalls.push({ name: soundName })
+    seenNames.add(nameSignature)
+    seenUrls.add(urlSignature)
+    normalizedSounds.push(normalizedSound)
   }
 
-  return toolCalls
+  return normalizedSounds
 }
 
-function getMessageType(message: AssistantMessageLike | null | undefined): string {
-  if (!message) return ''
-  if (typeof message._getType === 'function') {
-    return normalizeToolValue(message._getType()).toLowerCase()
-  }
-  return normalizeToolValue(message.type || message.role).toLowerCase()
-}
+function createSoundIndexes(sounds: readonly AudioMemeSound[]) {
+  const soundsByName = new Map<string, AudioMemeSound>()
+  const soundsByUrl = new Map<string, AudioMemeSound>()
 
-function isAssistantMessage(message: AssistantMessageLike | null | undefined): boolean {
-  const messageType = getMessageType(message)
-  return messageType === 'assistant' || messageType === 'ai'
-}
-
-function extractTextContent(value: unknown): string {
-  if (typeof value === 'string') return value
-  if (value == null) return ''
-  if (Array.isArray(value)) {
-    return value.map(item => extractTextContent(item)).join('')
-  }
-  if (typeof value !== 'object') return ''
-
-  const record = value as Record<string, unknown>
-  if (typeof record.text === 'string') return record.text
-  if (record.content !== undefined && record.content !== value) {
-    return extractTextContent(record.content)
-  }
-  if (Array.isArray(record.children)) {
-    return extractTextContent(record.children)
-  }
-  if (record.attrs && typeof record.attrs === 'object') {
-    const attrs = record.attrs as Record<string, unknown>
-    if (typeof attrs.content === 'string') return attrs.content
-    if (typeof attrs.text === 'string') return attrs.text
-  }
-  return ''
-}
-
-function extractAssistantText(message: AssistantMessageLike | null | undefined): string {
-  if (!isAssistantMessage(message)) return ''
-  if (!message) return ''
-  return extractTextContent(message.content ?? message.text).trim()
-}
-
-function resolveSession(args: unknown[]): Session | null {
-  const firstArg = args[0]
-  return firstArg && typeof firstArg === 'object' ? firstArg as Session : null
-}
-
-function resolveCharacterService(ctx: Context): ChatlunaCharacterServiceLike | undefined {
-  return (ctx as ContextWithChatlunaCharacter).chatluna_character
-}
-
-function parseReplyToolAction(value: unknown): AudioMemeToolCall | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-
-  const action = value as Record<string, unknown>
-  const soundName = normalizeToolName(action.name ?? action.key ?? action.sound)
-  return soundName ? { name: soundName } : null
-}
-
-function parseReplyToolActions(value: unknown): AudioMemeToolCall[] {
-  if (Array.isArray(value)) {
-    return value
-      .map(item => parseReplyToolAction(item))
-      .filter((item): item is AudioMemeToolCall => Boolean(item))
+  for (const sound of normalizeSounds(sounds)) {
+    soundsByName.set(normalizeName(sound.name), sound)
+    soundsByUrl.set(sound.url, sound)
   }
 
-  const parsed = parseReplyToolAction(value)
-  return parsed ? [parsed] : []
+  return { soundsByName, soundsByUrl }
 }
 
-function renderXmlAction(action: AudioMemeToolCall): string {
-  return `<audiomeme name="${escapeXmlAttr(action.name)}" />`
+export function createAudioMemeToolDescription(sounds: readonly AudioMemeSound[]) {
+  const rows = normalizeSounds(sounds).map(sound => `${sound.name} | ${sound.url}`)
+  const list = rows.length ? rows.join('\n') : '当前没有可用音效 | '
+
+  return [
+    '播放一个 meme 音效。根据用户需求从下面的可用音效列表中选择最合适的一项，然后调用 audiomeme 工具。',
+    '调用时必须把所选行的 url 原样传入 url 参数；不要编造不在列表里的 URL。',
+    '',
+    '名字 | url',
+    list,
+  ].join('\n')
 }
 
-function normalizeSoundNames(soundNames: readonly string[]) {
-  const seenNames = new Set<string>()
-  const normalizedNames: string[] = []
-
-  for (const soundName of soundNames) {
-    const normalizedName = normalizeToolValue(soundName)
-    const signature = normalizedName.toLowerCase()
-    if (!normalizedName || seenNames.has(signature)) continue
-
-    seenNames.add(signature)
-    normalizedNames.push(normalizedName)
-  }
-
-  return normalizedNames
-}
-
-function formatAvailableSoundNames(soundNames: readonly string[]) {
-  const normalizedNames = normalizeSoundNames(soundNames)
-  return normalizedNames.length ? normalizedNames.join('、') : '当前没有可用音效'
-}
-
-function createResponseFingerprint(message: AssistantMessageLike, response: string): string {
-  return `${getMessageType(message)}:${response}`
-}
-
-function subscribeAssistantResponses(
-  messages: unknown[],
-  getSession: () => Session | null,
-  onResponse: (response: string, session: Session | null) => void,
-): () => void {
-  const processedMessages = new WeakMap<object, string>()
-  const originalPush = messages.push.bind(messages)
-
-  const patchedPush = (...items: unknown[]): number => {
-    const result = originalPush(...items)
-
-    for (const item of items) {
-      if (!item || typeof item !== 'object') continue
-
-      const message = item as AssistantMessageLike
-      const response = extractAssistantText(message)
-      if (!response) continue
-
-      const fingerprint = createResponseFingerprint(message, response)
-      const previousFingerprint = processedMessages.get(item)
-      if (previousFingerprint === fingerprint) continue
-
-      processedMessages.set(item, fingerprint)
-      onResponse(response, getSession())
-    }
-
-    return result
-  }
-
-  const subscription: MessageSubscription = {
-    originalPush,
-    patchedPush,
-  }
-
-  messages.push = subscription.patchedPush
-
-  return () => {
-    if (messages.push === subscription.patchedPush) {
-      messages.push = subscription.originalPush
-    }
-  }
-}
-
-function registerReplyTool(options: InstallChatlunaAudioMemeToolsOptions): () => void {
-  const { ctx, config, logger, soundNames, executeToolCall } = options
-  const service = resolveCharacterService(ctx)
-  const availableSoundNames = normalizeSoundNames(soundNames)
-  const availableSoundNamesText = formatAvailableSoundNames(availableSoundNames)
-
-  if (!config.enableAudioMemeXmlTool || !config.injectAudioMemeXmlToolAsReplyTool) {
-    return () => {}
-  }
-
-  if (!service?.registerReplyToolField) {
-    logger.warn('chatluna_character.registerReplyToolField is unavailable, fallback to XML action mode')
-    return () => {}
-  }
-
-  return service.registerReplyToolField({
-    name: 'audiomeme_play',
-    schema: {
-      type: 'array',
-      description: `在本次回复之后播放 meme 音效。数组中的每一项代表一个要播放的音效动作。name 必须从以下可用音效名称中选择：${availableSoundNamesText}。`,
-      items: {
-        type: 'object',
-        properties: {
-          name: {
-            type: 'string',
-            description: '要播放的音效名称，必须精确匹配可用音效名称之一。',
-            ...(availableSoundNames.length ? { enum: availableSoundNames } : {}),
-          },
-        },
-        required: ['name'],
-      },
+function createAudioMemeToolMeta(): ChatlunaToolMeta {
+  return {
+    source: 'extension',
+    group: 'audiomeme',
+    tags: ['audiomeme', 'audio', 'meme'],
+    defaultAvailability: {
+      enabled: true,
+      main: true,
+      chatluna: true,
+      characterScope: 'all',
     },
-    isAvailable() {
-      return Boolean(config.enableAudioMemeXmlTool && config.injectAudioMemeXmlToolAsReplyTool)
-    },
-    async invoke(_, session, value) {
-      const actions = parseReplyToolActions(value)
-      for (const action of actions) {
-        const payload = await executeToolCall(session, action)
-        if (!payload) continue
+  }
+}
 
-        await session.send(payload.result)
-        logger.info('audiomeme=%s, user=%s, guild=%s', payload.soundName, session.userId, session.guildId)
+function resolveChatlunaPlatform(ctx: Context): ChatlunaPlatformLike | undefined {
+  return (ctx as ContextWithChatluna).chatluna?.platform
+}
+
+function resolveSession(runConfig: ToolRunnableConfig | undefined): Session | undefined {
+  return (runConfig as AudioMemeToolRunnableConfig | undefined)?.configurable?.session
+}
+
+function findSound(input: AudioMemeToolInput, indexes: ReturnType<typeof createSoundIndexes>) {
+  const { soundsByName, soundsByUrl } = indexes
+  const url = normalizeText(input.url)
+  const name = normalizeText(input.name)
+
+  if (url) return soundsByUrl.get(url) ?? null
+  if (name) return soundsByName.get(normalizeName(name)) ?? null
+  return null
+}
+
+function createAudioMemeTool(options: InstallChatlunaAudioMemeToolOptions) {
+  const { logger, sounds, playSound } = options
+  const description = createAudioMemeToolDescription(sounds)
+  const indexes = createSoundIndexes(sounds)
+
+  return createStructuredTool(
+    async (input: AudioMemeToolInput, runConfig?: ToolRunnableConfig) => {
+      const sound = findSound(input, indexes)
+      if (!sound) {
+        return '未找到音效。url 必须从 audiomeme 工具描述的可用音效列表中原样选择。'
+      }
+
+      const session = resolveSession(runConfig)
+      if (!session) {
+        return `已匹配音效：${sound.name}\nurl: ${sound.url}\n当前工具调用没有可用会话，无法发送语音。`
+      }
+
+      try {
+        const result = await playSound(sound)
+        await session.send(result)
+        logger.info('audiomeme=%s, user=%s, guild=%s', sound.name, session.userId, session.guildId)
+        return `已发送音效：${sound.name}\nurl: ${sound.url}`
+      } catch (error) {
+        logger.warn('ChatLuna audiomeme tool failed: %s', String(error))
+        return `发送音效失败：${sound.name}`
       }
     },
-    render(_, __, value) {
-      const actions = parseReplyToolActions(value)
-      if (!actions.length) return
-      return actions.map(action => renderXmlAction(action))
+    {
+      name: AUDIO_MEME_TOOL_NAME,
+      description,
+      schema: AudioMemeToolSchema,
     },
-  })
+  )
 }
 
-export function installChatlunaAudioMemeTools(options: InstallChatlunaAudioMemeToolsOptions): void {
-  const { ctx, config, logger, executeToolCall } = options
-  const messageSubscriptions = new WeakMap<unknown[], () => void>()
-  const sessionByMessages = new WeakMap<unknown[], Session | null>()
-  const trackedMessages = new Set<unknown[]>()
+export function installChatlunaAudioMemeTool(options: InstallChatlunaAudioMemeToolOptions): void {
+  const { ctx, config, logger, sounds } = options
+  const description = createAudioMemeToolDescription(sounds)
+  let disposeTool: (() => void) | null = null
+  let registeredPlatform: ChatlunaPlatformLike | null = null
+  let warnedMissingService = false
 
-  let currentService: ChatlunaCharacterServiceLike | undefined
-  let originalGetTemp: ChatlunaCharacterServiceLike['getTemp'] | undefined
-  let replyToolDispose: (() => void) | null = null
-  let replyToolService: ChatlunaCharacterServiceLike | undefined
-  let xmlActionExecutionEnabled = true
-
-  const cleanupMessageSubscriptions = () => {
-    for (const messages of Array.from(trackedMessages)) {
-      messageSubscriptions.get(messages)?.()
-      messageSubscriptions.delete(messages)
-      sessionByMessages.delete(messages)
-      trackedMessages.delete(messages)
-    }
+  const disposeCurrentTool = () => {
+    disposeTool?.()
+    disposeTool = null
+    registeredPlatform = null
   }
 
-  const cleanupServiceBinding = () => {
-    if (currentService && originalGetTemp && currentService.getTemp !== originalGetTemp) {
-      currentService.getTemp = originalGetTemp
-    }
-    originalGetTemp = undefined
-    currentService = undefined
-  }
-
-  const dispatchXmlToolCalls = async (session: Session | null, content: string) => {
-    if (!session || !content || !xmlActionExecutionEnabled) return
-
-    try {
-      const toolCalls = extractXmlAudioMemeToolCalls(content)
-      for (const toolCall of toolCalls) {
-        const payload = await executeToolCall(session, toolCall)
-        if (!payload) continue
-
-        await session.send(payload.result)
-        logger.info('audiomeme=%s, user=%s, guild=%s', payload.soundName, session.userId, session.guildId)
-      }
-    } catch (error) {
-      logger.warn('audiomeme XML runtime failed: %s', String(error))
-    }
-  }
-
-  const bindMessages = (temp: ChatlunaTempLike | undefined, session: Session | null) => {
-    const messages = temp?.completionMessages
-    if (!Array.isArray(messages) || typeof messages.push !== 'function') return
-
-    sessionByMessages.set(messages, session)
-    if (messageSubscriptions.has(messages)) return
-
-    const unsubscribe = subscribeAssistantResponses(
-      messages,
-      () => sessionByMessages.get(messages) ?? null,
-      (response, boundSession) => {
-        void dispatchXmlToolCalls(boundSession, response)
-      },
-    )
-
-    trackedMessages.add(messages)
-    messageSubscriptions.set(messages, unsubscribe)
-  }
-
-  const bindXmlRuntime = (bindCtx: Context) => {
-    const service = resolveCharacterService(bindCtx)
-
-    if (!config.enableAudioMemeXmlTool || !service?.getTemp) {
-      cleanupServiceBinding()
-      cleanupMessageSubscriptions()
+  const register = (bindCtx: Context) => {
+    if (!config.enableChatLunaTool) {
+      disposeCurrentTool()
       return
     }
 
-    if (service === currentService && originalGetTemp) return
-
-    cleanupServiceBinding()
-    cleanupMessageSubscriptions()
-
-    currentService = service
-    originalGetTemp = service.getTemp
-
-    service.getTemp = async (...args: unknown[]) => {
-      const temp = await originalGetTemp?.apply(service, args)
-      bindMessages(temp, resolveSession(args))
-      return temp
+    const platform = resolveChatlunaPlatform(bindCtx)
+    if (!platform?.registerTool) {
+      if (!warnedMissingService) {
+        warnedMissingService = true
+        logger.warn('ChatLuna service is unavailable, skip registering audiomeme tool')
+      }
+      return
     }
+
+    if (registeredPlatform === platform && disposeTool) return
+
+    disposeCurrentTool()
+    const audioMemeTool = createAudioMemeTool(options)
+    const dispose = platform.registerTool(AUDIO_MEME_TOOL_NAME, {
+      description,
+      selector: () => Boolean(config.enableChatLunaTool),
+      authorization: () => true,
+      meta: createAudioMemeToolMeta(),
+      createTool: () => audioMemeTool,
+    })
+
+    disposeTool = typeof dispose === 'function' ? dispose : () => {}
+    registeredPlatform = platform
+    logger.info('registered ChatLuna native tool: %s', AUDIO_MEME_TOOL_NAME)
   }
 
-  const bindReplyTools = (bindCtx: Context) => {
-    const service = resolveCharacterService(bindCtx)
-
-    if (replyToolDispose && service === replyToolService) return
-
-    replyToolDispose?.()
-    replyToolDispose = null
-    replyToolService = undefined
-    xmlActionExecutionEnabled = true
-
-    if (!config.enableAudioMemeXmlTool || !config.injectAudioMemeXmlToolAsReplyTool) return
-
-    replyToolDispose = registerReplyTool({ ...options, ctx: bindCtx })
-    replyToolService = service
-    xmlActionExecutionEnabled = !service?.registerReplyToolField
-    if (!xmlActionExecutionEnabled) {
-      logger.info('enabled experimental audiomeme reply tool field, XML action execution is disabled')
-    }
-  }
-
-  const bindAll = (bindCtx: Context) => {
-    bindReplyTools(bindCtx)
-    bindXmlRuntime(bindCtx)
-  }
-
-  ctx.on('ready', () => {
-    bindAll(ctx)
-  })
+  ctx.on('ready', () => register(ctx))
 
   if (typeof (ctx as Context & { inject?: unknown }).inject === 'function') {
     ;(ctx as Context & { inject: (deps: string[], callback: (innerCtx: Context) => void) => void })
-      .inject(['chatluna_character'], (innerCtx) => {
-        bindAll(innerCtx)
+      .inject(['chatluna'], (innerCtx) => {
+        register(innerCtx)
+        innerCtx.on('dispose', () => {
+          if (resolveChatlunaPlatform(innerCtx) === registeredPlatform) {
+            disposeCurrentTool()
+          }
+        })
       })
   }
 
-  ctx.on('dispose', () => {
-    replyToolDispose?.()
-    replyToolDispose = null
-    replyToolService = undefined
-    xmlActionExecutionEnabled = true
-    cleanupServiceBinding()
-    cleanupMessageSubscriptions()
-  })
+  ctx.on('dispose', disposeCurrentTool)
 }

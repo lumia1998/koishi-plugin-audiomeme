@@ -2,12 +2,12 @@ import { Context, Schema, h } from 'koishi'
 import axios from 'axios'
 import path from 'path'
 import fs from 'fs-extra'
-import { installChatlunaAudioMemeTools, type AudioMemeToolCall } from './chatluna'
+import { installChatlunaAudioMemeTool, type AudioMemeSound } from './chatluna'
 
 export const name = 'audiomeme'
 
 export const inject = {
-  optional: ['chatluna_character', 'puppeteer'],
+  optional: ['chatluna', 'puppeteer'],
 }
 
 export interface Config {
@@ -17,36 +17,10 @@ export interface Config {
   pageSize: number
   downloadTimeout: number
   sendMode: 'remote' | 'cache'
-  enableAudioMemeXmlTool: boolean
-  injectAudioMemeXmlToolAsReplyTool: boolean
-  audioMemeXmlReferencePrompt: string
+  enableChatLunaTool: boolean
 }
 
 const sounds: MemeSound[] = require('../meme_sounds.json')
-const SOUND_NAMES = sounds.map(sound => sound.name).filter(Boolean)
-const AVAILABLE_SOUND_NAMES_TEXT = SOUND_NAMES.join('、') || '当前没有可用音效'
-
-const AUDIO_MEME_XML_REFERENCE_PROMPT = `## 动作指令
-你可以根据需要在模型回复中输出一个独立的 <actions> 元素。它用于执行非语言的系统指令。如果不需要播放音效，请省略此元素。
-- audiomeme: \`<audiomeme name=""/>\`
-  - name: 音效名称，必须使用 audiomeme list 中存在的名称。
-  - 当前可用音效名称：${AVAILABLE_SOUND_NAMES_TEXT}
-  - 可用别名：\`<memeaudio name=""/>\`、\`<audio-meme key=""/>\`。
-  - 示例：
-    - <audiomeme name="bruh"/> ## 吐槽、无语、被整活时使用
-    - <audiomeme name="vine-boom-sound-effect-full"/> ## 强调震惊、揭晓或反转时使用
-    - <audiomeme name="cat-laugh-meme-1"/> ## 调侃、轻松嘲笑时使用
-  - 要求：
-    - 每次只在需要气氛音效时输出。
-    - name 必须精确匹配音效名称，不要自行翻译或改写。
-    - 音效是回复的补充，不要用音效替代必要的文字回复。
-
-格式示例：
-\`\`\`xml
-<actions>
-  <audiomeme name="bruh"/>
-</actions>
-\`\`\``
 
 export const Config: Schema<Config> = Schema.object({
   cachePath: Schema.string().default('cache/audiomeme').description('音频文件缓存目录。'),
@@ -58,15 +32,10 @@ export const Config: Schema<Config> = Schema.object({
     Schema.const('remote').description('远程链接：直接把音频 URL 交给平台发送，推荐 OneBot 使用。'),
     Schema.const('cache').description('缓存发送：下载到 Koishi 缓存目录后读取为音频数据发送。'),
   ]).role('radio').default('cache').description('音效发送模式。'),
-  enableAudioMemeXmlTool: Schema.boolean().default(false).description('是否启用 ChatLuna 回复中的 XML 音效工具调用。'),
-  injectAudioMemeXmlToolAsReplyTool: Schema.boolean().default(false).description('是否将 XML 音效工具注入实验性“工具调用回复”参数中。'),
-  audioMemeXmlReferencePrompt: Schema.string().role('textarea').default(AUDIO_MEME_XML_REFERENCE_PROMPT).description('模型回复 XML 参考提示词。此内容不会自动注入到角色提示词中；若开启“工具调用回复”注入，则模型会看到 audiomeme_play 参数说明，通常不需要再复制完整 XML 提示词。'),
+  enableChatLunaTool: Schema.boolean().default(false).description('是否注册 ChatLuna 原生 audiomeme 工具。开启后 ChatLuna 可以根据音效列表直接发送语音。'),
 })
 
-interface MemeSound {
-  name: string
-  url: string
-}
+interface MemeSound extends AudioMemeSound {}
 
 interface ListArgs {
   page: number
@@ -261,15 +230,7 @@ export function apply(ctx: Context, config: Config) {
 
   fs.ensureDirSync(cacheDir)
 
-  const playSound = async (name: string) => {
-    const sound = soundsByName.get(name.toLowerCase())
-    if (!sound) {
-      const suggestions = matchSounds(sounds, name).slice(0, 5).map(s => s.name)
-      return suggestions.length
-        ? [`未找到音效：${name}`, '你可能想找：', ...suggestions.map(s => `- ${s}`)].join('\n')
-        : `未找到音效：${name}`
-    }
-
+  const playSound = async (sound: MemeSound) => {
     if (config.sendMode === 'remote') {
       return h.audio(sound.url)
     }
@@ -307,10 +268,22 @@ export function apply(ctx: Context, config: Config) {
     }
   }
 
+  const playSoundByName = async (name: string) => {
+    const sound = soundsByName.get(name.toLowerCase())
+    if (!sound) {
+      const suggestions = matchSounds(sounds, name).slice(0, 5).map(s => s.name)
+      return suggestions.length
+        ? [`未找到音效：${name}`, '你可能想找：', ...suggestions.map(s => `- ${s}`)].join('\n')
+        : `未找到音效：${name}`
+    }
+
+    return playSound(sound)
+  }
+
   const playRandomSound = async () => {
     const sound = pickRandomSound(sounds)
     if (!sound) return '当前没有可用音效。'
-    return playSound(sound.name)
+    return playSound(sound)
   }
 
   const listSounds = async (input?: string, renderAllPages = true) => {
@@ -348,7 +321,7 @@ export function apply(ctx: Context, config: Config) {
       if (command === 'list') return listSounds(commandArgs, true)
       if (command === 'random') return playRandomSound()
 
-      return playSound(normalizedAction)
+      return playSoundByName(normalizedAction)
     })
 
   ctx.command('audiomeme.list [query:text]', '查看音效 meme 列表')
@@ -363,18 +336,12 @@ export function apply(ctx: Context, config: Config) {
       return playRandomSound()
     })
 
-  installChatlunaAudioMemeTools({
+  installChatlunaAudioMemeTool({
     ctx,
     config,
     logger,
-    soundNames: SOUND_NAMES,
-    async executeToolCall(_session, toolCall: AudioMemeToolCall) {
-      const result = await playSound(toolCall.name)
-      return {
-        soundName: toolCall.name,
-        result,
-      }
-    },
+    sounds,
+    playSound,
   })
 
   ctx.setInterval(async () => {
